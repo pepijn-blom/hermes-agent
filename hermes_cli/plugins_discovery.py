@@ -27,6 +27,21 @@ logger = logging.getLogger("hermes_cli.plugins")
 ENTRY_POINTS_GROUP = "hermes_agent.plugins"
 ENTRY_POINT_CAPABILITIES_GROUP = "hermes_agent.plugin_capabilities"
 
+# Per-harness manifest directories that plugin repos ship for OTHER agent
+# harnesses (Claude Code, Codex, Cursor, Devin, Kimi — e.g. obra/superpowers
+# keeps one plugin.json per harness inside them). Their plugin.json is not an
+# Agent Plugins v1 manifest and can never validate, so attempting it on every
+# discovery pass only spams warnings (#101962). Directory discovery skips
+# them; a plugin's real Hermes manifest (.hermes-plugin/plugin.yaml or a
+# top-level plugin.yaml/plugin.json) is unaffected.
+_FOREIGN_HARNESS_MANIFEST_DIRS = frozenset({
+    ".claude-plugin",
+    ".codex-plugin",
+    ".cursor-plugin",
+    ".devin-plugin",
+    ".kimi-plugin",
+})
+
 
 def _select_entry_point_group(entry_points: Any, group: str) -> list:
     """Return one metadata entry-point group across supported Python APIs."""
@@ -111,6 +126,9 @@ def scan_directory(
         return manifests
     for child in sorted(path.iterdir()):
         if not child.is_dir() or (depth == 0 and skip_names and child.name in skip_names):
+            continue
+        if child.name in _FOREIGN_HARNESS_MANIFEST_DIRS:
+            logger.debug("Skipping %s (foreign-harness manifest convention)", child)
             continue
         manifest_file = next((f for f in (child / "plugin.yaml", child / "plugin.yml") if f.exists()), None)
         portable_file = child / "plugin.json"
